@@ -1,0 +1,214 @@
+
+
+
+x-airflow-common:
+  &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+  volumes:
+    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+    - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+    - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
+    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+
+#serviços
+services:
+
+  redis: # serviço do Redis
+    image: "redis:7.0-alpine"
+    container_name: redis
+    ports:
+      - "6379:6379" # mapeia a porta 6379 do contêiner para a porta 6379 do host
+    healthcheck: # verifica a saúde do serviço
+      test: ["CMD", "redis-cli", "ping"] 
+      interval: 30s # intervalo entre as verificações
+      timeout: 10s # tempo máximo para a verificação
+      retries: 5 # número de tentativas antes de considerar o serviço como não saudável
+      start_period: 30s # período de espera antes de iniciar as verificações
+
+  postgres: # serviço do PostgreSQL
+    image: "postgres:15-alpine"
+    container_name: postgres
+    environment:
+      POSTGRES_USER: airflow # usuário do banco de dados
+      POSTGRES_PASSWORD: airflow # senha do banco de dados
+      POSTGRES_DB: airflow # nome do banco de dados
+    ports:
+      - "5432:5432" # mapeia a porta 5432 do contêiner para a porta 5432 do host
+    healthcheck: # verifica a saúde do serviço
+      test: ["CMD-SHELL", "pg_isready -U airflow"] 
+      interval: 30s # intervalo entre as verificações
+      timeout: 10s # tempo máximo para a verificação
+      retries: 5 # número de tentativas antes de considerar o serviço como não saudável
+      start_period: 30s # período de espera antes de iniciar as verificações
+ 
+  
+     
+  airflow-webserver: # serviço web do Airflow
+    <<: *airflow-common 
+    restart: always # reinicia o serviço automaticamente em caso de falha
+    depends_on: # depende do serviço do scheduler
+      - airflow-scheduler
+    command: api-server # comando para iniciar o webserver  
+    ports:
+      - "8080:8080" # mapeia a porta 8080 do contêiner para a porta 8080 
+    healthcheck: # verifica a saúde do serviço
+      test: ["CMD-SHELL", "airflow info"] 
+      interval: 30s # intervalo entre as verificações
+      timeout: 10s # tempo máximo para a verificação
+      retries: 5 # número de tentativas antes de considerar o serviço como não saudável
+      start_period: 30s # período de espera antes de iniciar as verificações
+
+  airflow-scheduler: # serviço do scheduler do Airflow
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""] # verifica se o job do scheduler está ativo
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-worker: # serviço do worker do Airflow
+    <<: *airflow-common
+    command: celery worker
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'airflow jobs check --job-type WorkerJob --hostname "$${HOSTNAME}"'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:  # herda as variáveis de ambiente comuns
+      <<: *airflow-common-env
+      DUMB_INIT_SETSID: "0" # evita problemas com sinais no Celery
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-triggerer: # serviço do triggerer do Airflow
+    <<: *airflow-common
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type TriggererJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate &&
+        airflow users create \
+          --username ${_AIRFLOW_WWW_USER_USERNAME:-airflow} \
+          --password ${_AIRFLOW_WWW_USER_PASSWORD:-airflow} \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com
+    environment:
+      <<: *airflow-common-env
+    env_file:
+      - .env
+    user: "0:0"
+
+  airflow-cli:
+    <<: *airflow-common
+    profiles:
+      - debug
+    environment:
+      <<: *airflow-common-env
+      CONNECTION_CHECK_MAX_COUNT: "0"
+    command:
+      - bash
+      - -c
+      - airflow
+    depends_on:
+      <<: *airflow-common-depends-on
+
+  flower:
+    <<: *airflow-common
+    command: celery flower
+    profiles:
+      - flower
+    ports:
+      - "5555:5555"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:5555/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  spark-master:
+    image: bitnami/spark:3.4.1
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "7077:7077"
+      - "8081:8080"
+    volumes:
+      - spark-events:/tmp/spark-events
+
+  spark-worker:
+    image: bitnami/spark:3.4.1
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+    depends_on:
+      - spark-master
+    ports:
+      - "8082:8081"
+    volumes:
+      - spark-events:/tmp/spark-events
+
+volumes:
+  spark-events:
+  postgres_data:
