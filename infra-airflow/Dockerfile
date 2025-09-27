@@ -1,17 +1,15 @@
-# 🔧 Versões configuráveis
-ARG AIRFLOW_VERSION="3.0.6"
-ARG PYTHON_MAJOR_MINOR_VERSION="3.11"
-FROM apache/airflow:${AIRFLOW_VERSION}-python${PYTHON_MAJOR_MINOR_VERSION}
+# 🔧 Versões fixas (evita puxar Airflow 3.x instável)
+FROM apache/airflow:2.10.2-python3.11
 
-# 🐍 Instalar dependências Python adicionais via build arg
-ARG PIP_ADDITIONAL_REQUIREMENTS=""
-COPY requirements.txt /requirements.txt
-RUN pip install --no-cache-dir -r /requirements.txt \
-  && if [ -n "${PIP_ADDITIONAL_REQUIREMENTS}" ]; then \
-       pip install --no-cache-dir ${PIP_ADDITIONAL_REQUIREMENTS}; \
-     fi
+# 🐍 Instalar dependências adicionais do Python
+# - Spark Provider para integração com Spark
+# - pandas e numpy para manipulação de dados
+RUN pip install --no-cache-dir \
+    apache-airflow-providers-apache-spark \
+    pandas \
+    numpy
 
-# ⚙️ Mudar para root para instalar pacotes do sistema (apenas utilitários básicos)
+# ⚙️ Mudar para root para instalar utilitários básicos
 USER root
 RUN apt-get update --allow-releaseinfo-change \
   && apt-get install -y --no-install-recommends \

@@ -1,6 +1,3 @@
-
-
-
 x-airflow-common:
   &airflow-common
   build:
@@ -16,9 +13,7 @@ x-airflow-common:
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
-    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
@@ -33,59 +28,55 @@ x-airflow-common:
     postgres:
       condition: service_healthy
 
-#serviços
 services:
-
-  redis: # serviço do Redis
+  redis:
     image: "redis:7.0-alpine"
     container_name: redis
     ports:
-      - "6379:6379" # mapeia a porta 6379 do contêiner para a porta 6379 do host
-    healthcheck: # verifica a saúde do serviço
-      test: ["CMD", "redis-cli", "ping"] 
-      interval: 30s # intervalo entre as verificações
-      timeout: 10s # tempo máximo para a verificação
-      retries: 5 # número de tentativas antes de considerar o serviço como não saudável
-      start_period: 30s # período de espera antes de iniciar as verificações
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
-  postgres: # serviço do PostgreSQL
+  postgres:
     image: "postgres:15-alpine"
     container_name: postgres
     environment:
-      POSTGRES_USER: airflow # usuário do banco de dados
-      POSTGRES_PASSWORD: airflow # senha do banco de dados
-      POSTGRES_DB: airflow # nome do banco de dados
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
     ports:
-      - "5432:5432" # mapeia a porta 5432 do contêiner para a porta 5432 do host
-    healthcheck: # verifica a saúde do serviço
-      test: ["CMD-SHELL", "pg_isready -U airflow"] 
-      interval: 30s # intervalo entre as verificações
-      timeout: 10s # tempo máximo para a verificação
-      retries: 5 # número de tentativas antes de considerar o serviço como não saudável
-      start_period: 30s # período de espera antes de iniciar as verificações
- 
-  
-     
-  airflow-webserver: # serviço web do Airflow
-    <<: *airflow-common 
-    restart: always # reinicia o serviço automaticamente em caso de falha
-    depends_on: # depende do serviço do scheduler
-      - airflow-scheduler
-    command: api-server # comando para iniciar o webserver  
-    ports:
-      - "8080:8080" # mapeia a porta 8080 do contêiner para a porta 8080 
-    healthcheck: # verifica a saúde do serviço
-      test: ["CMD-SHELL", "airflow info"] 
-      interval: 30s # intervalo entre as verificações
-      timeout: 10s # tempo máximo para a verificação
-      retries: 5 # número de tentativas antes de considerar o serviço como não saudável
-      start_period: 30s # período de espera antes de iniciar as verificações
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
-  airflow-scheduler: # serviço do scheduler do Airflow
+  airflow-webserver:
+    <<: *airflow-common
+    restart: always
+    depends_on:
+      - airflow-scheduler
+    command: webserver   # 🔥 FIX: era api-server
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "airflow info"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-scheduler:
     <<: *airflow-common
     command: scheduler
     healthcheck:
-      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""] # verifica se o job do scheduler está ativo
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -96,7 +87,7 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-  airflow-worker: # serviço do worker do Airflow
+  airflow-worker:
     <<: *airflow-common
     command: celery worker
     healthcheck:
@@ -107,16 +98,16 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-    environment:  # herda as variáveis de ambiente comuns
+    environment:
       <<: *airflow-common-env
-      DUMB_INIT_SETSID: "0" # evita problemas com sinais no Celery
+      DUMB_INIT_SETSID: "0"
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
 
-  airflow-triggerer: # serviço do triggerer do Airflow
+  airflow-triggerer:
     <<: *airflow-common
     command: triggerer
     healthcheck:
