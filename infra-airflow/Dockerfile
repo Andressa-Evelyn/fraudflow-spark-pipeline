@@ -20,11 +20,11 @@ RUN apt-get update --allow-releaseinfo-change \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
-# 🧼 Garantir permissões corretas para Airflow
+
+# ⚠️ Corrigir permissões (IMPORTANTE para não quebrar a imagem)
 RUN mkdir -p /opt/airflow && chown -R 50000:0 /opt/airflow
 
-# 👤 Voltar para usuário padrão do Airflow
+# voltar para usuário padrão
 USER 50000:0
 
-# 🐚 Entrar no bash por padrão (útil para debug)
-CMD ["bash"]
+
