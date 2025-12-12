@@ -121,29 +121,32 @@ services:
       airflow-init:
         condition: service_completed_successfully
     restart: always
-
+   
   spark-master:
     image: apache/spark:3.5.1
     container_name: spark-master
+    command: ["/opt/spark/sbin/start-master.sh"]
     environment:
-      - SPARK_MODE=master
+       - SPARK_NO_DAEMONIZE=true
     ports:
       - "7077:7077"
       - "8081:8080"
     volumes:
+      - ../dados:/opt/spark-data
       - spark-events:/tmp/spark-events
   spark-worker:
     image: apache/spark:3.5.1
     container_name: spark-worker
     depends_on:
       - spark-master
+    command: ["/opt/spark/sbin/start-worker.sh", "spark://spark-master:7077"]  
     environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_NO_DAEMONIZE=true
       - SPARK_WORKER_MEMORY=2G
     ports:
       - "8082:8081"
     volumes:
+      - ../dados:/opt/spark-data    
       - spark-events:/tmp/spark-events
 
 volumes:
