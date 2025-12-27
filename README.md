@@ -6,7 +6,7 @@ O objetivo é demonstrar, de forma prática, como integrar ferramentas amplament
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## Tecnologias Utilizadas
 
 - **Apache Spark**  
   Processamento distribuído de dados e transformações em larga escala.
@@ -22,7 +22,7 @@ O objetivo é demonstrar, de forma prática, como integrar ferramentas amplament
 
 ---
 
-## 🏗️ Arquitetura do Projeto
+## Arquitetura do Projeto
 
 O pipeline segue uma arquitetura simples e didática, focada em boas práticas de engenharia de dados:
 
@@ -34,7 +34,7 @@ O pipeline segue uma arquitetura simples e didática, focada em boas práticas d
 
 ---
 
-## ▶️ Como Executar o Projeto Localmente
+## Como Executar o Projeto Localmente
 
 ### Pré-requisitos
 
@@ -54,6 +54,3 @@ O pipeline segue uma arquitetura simples e didática, focada em boas práticas d
    docker ps
    acesse o Airflow
    ative o DAG no painel do Airflow
-
-
-
